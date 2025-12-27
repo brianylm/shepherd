@@ -1,74 +1,26 @@
-import os
-import getpass
-from database import init_db, upsert_parcel
-from gmail_client import authenticate_gmail, search_shipping_emails, get_email_body
-from ai_parser import configure_gemini, parse_email_content
+import gmail_client
+import ai_parser
 
 def main():
-    print("Initializing Parcel Tracker...")
+    print("Connecting to Gmail...")
+    service = gmail_client.get_gmail_service()
     
-    # 1. Setup Database
-    init_db()
-
-    # Pre-check for credentials.json
-    if not os.path.exists('credentials.json'):
-        print("ERROR: credentials.json not found in current directory.")
-        print("Please download it from Google Cloud Console and place it here.")
-        return
+    # We're searching for ANY email with these words to be sure it finds something
+    print("Searching for ANY emails containing 'Lazada', 'Shopee', or 'Order'...")
+    query = "Lazada OR Shopee OR Order" 
+    emails = gmail_client.fetch_emails(service, query)
     
-    # 2. Setup Gemini
-    api_key = os.environ.get("GOOGLE_API_KEY")
-    if not api_key:
-        print("GOOGLE_API_KEY not found in environment variables.")
-        api_key = getpass.getpass("Please enter your Google Gemini API Key: ")
-    
-    if not api_key:
-        print("API Key required. Exiting.")
+    if not emails:
+        print("!!! Still no emails found. Check if you have these words in your inbox. !!!")
         return
 
-    configure_gemini(api_key)
+    print(f"--- Found {len(emails)} potential emails! Sending to Gemini... ---")
     
-    # 3. Authenticate Gmail
-    print("Authenticating with Gmail...")
-    service = authenticate_gmail()
-    if not service:
-        print("Failed to authenticate.")
-        return
-
-    # 4. Search Emails
-    print("Searching for shipping emails...")
-    messages = search_shipping_emails(service)
-    
-    if not messages:
-        print("No emails found.")
-        return
-        
-    print(f"Found {len(messages)} emails. Processing...")
-    
-    for msg in messages:
-        msg_id = msg['id']
-        print(f"Processing email {msg_id}...")
-        
-        # Get Body
-        body = get_email_body(service, msg_id)
-        if not body:
-            print("  No body content found. Skipping.")
-            continue
-            
-        # Parse with Gemini
-        print("  Extracting info with Gemini...")
-        data = parse_email_content(body[:10000]) # Limit body size for token limits
-        
-        if data:
-            print(f"  Extracted: {data}")
-            if data.get('tracking_id'):
-                upsert_parcel(data)
-            else:
-                print("  No tracking ID found in extracted data.")
-        else:
-            print("  Failed to extract data.")
-
-    print("Done!")
+    for i, body in enumerate(emails):
+        print(f"Reading Email #{i+1}...")
+        info = ai_parser.parse_shipping_info(body)
+        print(f"Gemini says: {info}")
+        print("-" * 30)
 
 if __name__ == "__main__":
     main()
