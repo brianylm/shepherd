@@ -1,20 +1,26 @@
 import os
 from google import genai
 from dotenv import load_dotenv
+import json # Add this at the top
 
 load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def parse_shipping_info(email_text):
-    # We tell Gemini specifically to look for the FORWARDED info
+    # We ask for JSON now so it's easy to plug into your dictionary-based upsert_parcel function
     prompt = f"""
-    The following text is a forwarded email. 
-    Find the ORIGINAL shipping information from the sender (like Lazada or Shopee).
-    Extract the courier name and tracking number.
-    
-    Format: Courier: [Name], Tracking: [Number]
-    If not found, return 'No tracking info found'.
+    Extract shipping details from this email. Return ONLY a JSON object with these keys:
+    "platform" (e.g., Lazada, Shopee, Amazon),
+    "product_name",
+    "tracking_id",
+    "courier",
+    "destination_address",
+    "delivery_type",
+    "expiry_date" (if found, else null),
+    "status" (default to 'Shipped')
+
+    If any field is missing, use null. If no tracking_id is found, return "NO_TRACKING".
 
     Text: {email_text}
     """
@@ -24,4 +30,6 @@ def parse_shipping_info(email_text):
         contents=prompt
     )
     
-    return response.text
+    # Clean the response in case Gemini adds markdown backticks
+    clean_json = response.text.replace('```json', '').replace('```', '').strip()
+    return clean_json

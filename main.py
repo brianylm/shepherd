@@ -1,26 +1,36 @@
+import json
 import gmail_client
 import ai_parser
+import database # This is your file containing init_db and upsert_parcel
 
 def main():
-    print("Connecting to Gmail...")
+    database.init_db()
+    
+    print("Searching Gmail...")
     service = gmail_client.get_gmail_service()
     
-    # We're searching for ANY email with these words to be sure it finds something
-    print("Searching for ANY emails containing 'Lazada', 'Shopee', or 'Order'...")
-    query = "Lazada OR Shopee OR Order" 
-    emails = gmail_client.fetch_emails(service, query)
-    
+    emails = gmail_client.fetch_emails(service, "order")
+   
     if not emails:
-        print("!!! Still no emails found. Check if you have these words in your inbox. !!!")
-        return
+        print("❌ No emails found. Try a different search term or check your inbox!")
+        return  # Stop the function here
 
-    print(f"--- Found {len(emails)} potential emails! Sending to Gemini... ---")
-    
-    for i, body in enumerate(emails):
-        print(f"Reading Email #{i+1}...")
-        info = ai_parser.parse_shipping_info(body)
-        print(f"Gemini says: {info}")
-        print("-" * 30)
+    print(f"✅ Found {len(emails)} emails! Starting AI analysis...")
+
+    for body in emails:
+        ai_response = ai_parser.parse_shipping_info(body)
+        
+        if "NO_TRACKING" in ai_response:
+            continue
+            
+        try:
+            # Convert Gemini's text into a Python Dictionary
+            parcel_data = json.loads(ai_response)
+            
+            # Use your existing function!
+            database.upsert_parcel(parcel_data)
+        except Exception as e:
+            print(f"Error processing email: {e}")
 
 if __name__ == "__main__":
     main()
